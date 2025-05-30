@@ -12,21 +12,25 @@ import h5py  # Para guardar resultados en formato HDF5
 import subprocess, threading, re, math # Última celda para la generación del video
 
 # ─── Parámetros del modelo ────────────────────────────────────────────────────
-L        = 500
-J        = 1.0
-T        = 10
-n_sweeps = 500
+L        = int(32)                      #(int)
+J        = float(1.0)                   #(float) 
+T        = float(1.0)                    #(float)
+Beta     = 1.0 / T                       #(float) Inverso de la temperatura
+n_sweeps = int(1000)                     #(int)
+threads_percentage = int(100)           #(int) Porcentaje de hilos a usar (100% = todos los disponibles)
 
 # ─── Configuración de semilla para reproducibilidad ──────────────────────────
-seed = None                    # None = usar entropía del sistema
-rng  = np.random.default_rng(seed)     # PCG64 RNG: seguro y adecuado para simulaciones
+seed = None                             # None = usar entropía del sistema
+rng  = np.random.default_rng(seed)      # PCG64 RNG: seguro y adecuado para simulaciones
 
-#Establecer el número de hilos a usar
+#Establecemos el número de hilos a usar asegurándonos de que no exceda el número de hilos disponibles ni sea menor a 1
 n_threads_available = os.cpu_count()
-set_num_threads(int(n_threads_available))
+if n_threads_available is None:
+    n_threads_available = 1  # Si no se puede determinar, usar al menos 1 hilo
+threads_percentage = max(1, min(100, threads_percentage))
+set_num_threads(int(n_threads_available*(threads_percentage / 100.0)))
 n_threads = get_num_threads()
-
-print(f"Usando {n_threads} hilos de {n_threads_available} disponibles (100%).")
+print(f"Usando {n_threads} hilos de {n_threads_available} disponibles ({threads_percentage}%).")
 
 #──────────────────────────────────────────────────────────────────────────────#
 #──────────────────────────────────────────────────────────────────────────────#
@@ -49,10 +53,9 @@ def force_boundary_conditions(config):
     return config
 
 # Crear configuración y mostrarla
-config = init_config(L, rng)
-config = force_boundary_conditions(config)
+config = force_boundary_conditions(init_config(L, rng))
 plt.figure(figsize=(5,5))
-plt.imshow(config, cmap='gray', interpolation='nearest')
+plt.imshow(force_boundary_conditions(init_config(L, rng)), cmap='gray', interpolation='nearest')
 plt.title(f'Configuración inicial aleatoria (L={L})')
 plt.axis('off')
 plt.show()
@@ -61,26 +64,33 @@ plt.show()
 #──────────────────────────────────────────────────────────────────────────────#
 
 # ─── Celda 3: Definición de observables termodinámicos ─────────────────────
-
-def energy(config, J=J):
+@njit(parallel=True)
+def energy(config, J, L):
     """
     Calcula la energía total del modelo de Ising 2D con contorno periódico.
     """
     # Enlaces derecha e inferior para contar cada par una sola vez
-    right = np.roll(config, -1, axis=1)
-    down  = np.roll(config, -1, axis=0)
-    return -J * np.sum(config * (right + down))
+    sum = 0.0
+    for i in prange(L):
+        for j in range(L):
+            sum += config[i, j] * (config[i, (j + 1) % L] + config[(i + 1) % L, j])
 
+    return -J * sum
 
-def magnetization(config):
+@njit(parallel=True)
+def magnetization(config, L):
     """
     Calcula la magnetización total del sistema.
     """
-    return np.sum(config)
+    sum = 0.0
+    for i in prange(L):
+        for j in range(L):
+            sum += config[i, j]
+    return sum
 
 # Ejemplo de uso en Celda 3
-E0 = energy(config)
-M0 = magnetization(config)
+E0 = energy(config, J, L)
+M0 = magnetization(config, L)
 print(f"Energía inicial: {E0:.2f}, Magnetización inicial: {M0}")
 
 #──────────────────────────────────────────────────────────────────────────────#
@@ -103,26 +113,33 @@ def calculate_acceptance(frames: np.ndarray) -> np.ndarray:
 
 
 @njit
-def delta_E_kawasaki(config, i, j, k, l, J=J):
+def delta_E_kawasaki(config, i, j, k, l, J):
     """
     Calcula el cambio de energía ΔE para un intercambio de espines en la dinámica de Kawasaki.
     """
+    delta_E = 0.0
+    E_1 = 0.0
+    E_2 = 0.0
+    neighbors_ij = 0.0
+    neighbors_kl = 0.0
+    neighbors_ij = config[i,(j-1)%L] + config[(i-1)%L,j] + config[(i+1)%L,j] + config[i,(j+1)%L] - config[k, l]
+    neighbors_kl = config[k,(l-1)%L] + config[(k-1)%L,l] + config[(k+1)%L,l] + config[k,(l+1)%L] - config[i, j]
     #Calculamos la energía de la configuración inicial
-    E_1 = -J*(config[i,j]*(config[i,(j-1)%L] + config[(i-1)%L,j] + config[(i+1)%L,j] + config[i,(j+1)%L])+config[k,l]*(config[k,(l-1)%L] + config[(k-1)%L,l] + config[(k+1)%L,l] + config[k,(l+1)%L]))
-   
+    E_1 = config[i,j]*neighbors_ij+config[k,l]*neighbors_kl
     #Calculamos la energía de la configuración final
-    E_2 = -J*(config[k,l]*(config[i,(j-1)%L] + config[(i-1)%L,j] + config[(i+1)%L,j] + config[i,(j+1)%L])+config[i,j]*(config[k,(l-1)%L] + config[(k-1)%L,l] + config[(k+1)%L,l] + config[k,(l+1)%L]))
+    E_2 = config[k,l]*neighbors_ij+config[i,j]*neighbors_kl
     #Calculamos el cambio de energía
-    delta_E = E_2 - E_1
+    delta_E = -J*(E_2 - E_1)
     return delta_E
 
 
 #Paso de la simulación
-@njit   
-def sweep_kawasaki(config, L, J, T):
-    for k in prange(L*L):
+@njit
+def sweep_kawasaki(config, L, J, Beta):
+    for k in range(((L-2)*L)):
         #Seleccionamos un espín aleatorio (i, j) de la red excluyendo las filas superior e inferior
         i, j = np.random.randint(1, L-1), np.random.randint(0, L)
+        # Escribimos el espin seleccionado en un archivo para depuración
         # Definimos los offsets para los vecinos (arriba, abajo, izquierda, derecha)
         offsets = np.array([(1, 0), (0, 1), (0, -1),  (-1, 0)], dtype=np.int64)
         # Ahora seleccionamos un offset aleatorio que decidirá si escogemos un vecino arriba, abajo, izquierda o derecha
@@ -137,15 +154,18 @@ def sweep_kawasaki(config, L, J, T):
             di, dj = offsets[np.random.randint(0, 4)]
         # Ahora podemos calcular la posición exacta del espín vecino
         ni, nj = (i + di) % L, (j + dj) % L
-        # Ahora que tenemos la posición del espín vecino, podemos calcular el ΔE
-        delta_E = delta_E_kawasaki(config, i, j, ni, nj, J)
-        # Ahora que tenemos el ΔE, podemos decidir si aceptamos o no el movimiento
-        # La condición básicamente es que para ΔE <= 0, aceptamos el movimiento, ya que de ser así la probabilidad de aceptación es 1.
-        # Si ΔE > 0, aceptamos el movimiento con probabilidad p = exp(-ΔE/T), y lo más eficiente es generar un número aleatorio entre 0 y 1 y comparar con p,
-        # ya que si el número aleatorio es menor o igual que p, aceptamos el movimiento.
-        if delta_E <= 0 or np.random.random() < np.exp(-delta_E / T):
-            # Intercambiar espines
-            config[i, j], config[ni, nj] = config[ni, nj], config[i, j]
+        # Escribimos el espín vecino en el archivo para depuración
+        # Ahora que tenemos la posición del espín vecino, comprobamos que no sea el mismo espín (i, j) que el vecino (ni, nj)
+        if config[i, j] != config[ni, nj]:
+            delta_E = delta_E_kawasaki(config, i, j, ni, nj, J)
+            # Ahora que tenemos el ΔE, podemos decidir si aceptamos o no el movimiento
+            # La condición básicamente es que para ΔE <= 0, aceptamos el movimiento, ya que de ser así la probabilidad de aceptación es 1.
+            # Si ΔE > 0, aceptamos el movimiento con probabilidad p = exp(-ΔE/T), y lo más eficiente es generar un número aleatorio entre 0 y 1 y comparar con p,
+            # ya que si el número aleatorio es menor o igual que p, aceptamos el movimiento.
+            if delta_E <= 0 or np.random.rand() < np.exp(-delta_E * Beta):
+                    # Intercambiar espines
+                    config[i, j], config[ni, nj] = config[ni, nj], config[i, j]
+            
     
 #──────────────────────────────────────────────────────────────────────────────#
 #──────────────────────────────────────────────────────────────────────────────#
@@ -179,8 +199,8 @@ with h5py.File(destino, 'w') as f:
     f.attrs['thin'] = thin
 
     # Medir estado inicial
-    energies[0] = energy(config, J)
-    magnetizations[0] = magnetization(config)
+    energies[0] = energy(config, J, L)
+    magnetizations[0] = magnetization(config, L)
     # Guardar configuración inicial ds[0]
     ds[0, :, :] = config
 
@@ -193,8 +213,8 @@ with h5py.File(destino, 'w') as f:
         # Ahora podemos barrer la red para elegir el par de espines a intercambiar.
         sweep_kawasaki(config, L, J, T)
         # Registrar observables
-        energies[sweep] = energy(config, J)
-        magnetizations[sweep] = magnetization(config)
+        energies[sweep] = energy(config, J, L)
+        magnetizations[sweep] = magnetization(config, L)
         
 
         # Almacenar las configuraciones “thinned” si toca
@@ -255,15 +275,15 @@ print(f"Simulación completada en {end_time - start_time:.4f} s")
 #──────────────────────────────────────────────────────────────────────────────#
 #──────────────────────────────────────────────────────────────────────────────#
 
-# Celda 6: pipeline GPU-BOUND con NVENC a partir de HDF5
+# Celda: pipeline GPU-BOUND con NVENC a partir de HDF5
 
 # ── Parámetros de usuario ─────────────────────────────────────────────────────
 HDF5_FILE = "configs.h5"
 DATASET   = "configs"
 FILE_OUT  = "simulacion"
 GPU_ID    = 0           # 0 = tu NVIDIA 4050
-INTERVAL  = 50          # ms entre frames → fps = 1000/INTERVAL
-TARGET_W  = 1440        # ancho deseado; None para mantener original
+INTERVAL  = 125          # ms entre frames → fps = 1000/INTERVAL
+TARGET_W  = 1000        # ancho deseado; None para mantener original
 TARGET_H  = None        # alto deseado; None para mantener original
 MIN_SIDE  = 160         # mínimo seguro para NVENC (≥ 145 y par)
 # ──────────────────────────────────────────────────────────────────────────────
