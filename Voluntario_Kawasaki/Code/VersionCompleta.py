@@ -113,9 +113,19 @@ def calculate_acceptance(frames: np.ndarray) -> np.ndarray:
 
 
 @njit
-def delta_E_kawasaki(config, i, j, k, l, J):
-    """
-    Calcula el cambio de energía ΔE para un intercambio de espines en la dinámica de Kawasaki.
+def delta_E_kawasaki(config, L, i, j, k, l, J):
+    """Calcula el cambio de energía ΔE para la dinámica de Kawasaki.
+
+    Parameters
+    ----------
+    config : np.ndarray
+        Configuración actual de espines.
+    L : int
+        Tamaño del sistema.
+    i, j, k, l : int
+        Coordenadas de los espines a intercambiar.
+    J : float
+        Constante de acoplamiento.
     """
     delta_E = 0.0
     E_1 = 0.0
@@ -157,7 +167,7 @@ def sweep_kawasaki(config, L, J, Beta):
         # Escribimos el espín vecino en el archivo para depuración
         # Ahora que tenemos la posición del espín vecino, comprobamos que no sea el mismo espín (i, j) que el vecino (ni, nj)
         if config[i, j] != config[ni, nj]:
-            delta_E = delta_E_kawasaki(config, i, j, ni, nj, J)
+            delta_E = delta_E_kawasaki(config, L, i, j, ni, nj, J)
             # Ahora que tenemos el ΔE, podemos decidir si aceptamos o no el movimiento
             # La condición básicamente es que para ΔE <= 0, aceptamos el movimiento, ya que de ser así la probabilidad de aceptación es 1.
             # Si ΔE > 0, aceptamos el movimiento con probabilidad p = exp(-ΔE/T), y lo más eficiente es generar un número aleatorio entre 0 y 1 y comparar con p,
@@ -211,7 +221,7 @@ with h5py.File(destino, 'w') as f:
         # Ahora calculamos las coordenadas de los espines a intercambiar mediante un vector de offsets
         offsets = np.array([(0, 1), (0, -1), (1, 0), (-1, 0)], dtype=np.int64)  # Al sumar el offset a la posición del espín, obtenemos la posición del espín vecino.
         # Ahora podemos barrer la red para elegir el par de espines a intercambiar.
-        sweep_kawasaki(config, L, J, T)
+        sweep_kawasaki(config, L, J, Beta)
         # Registrar observables
         energies[sweep] = energy(config, J, L)
         magnetizations[sweep] = magnetization(config, L)
