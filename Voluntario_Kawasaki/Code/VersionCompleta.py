@@ -1,15 +1,13 @@
 # Celda 1: Imports, parámetros y configuración de la semilla ───────────────────────────────────────
 
-import numpy as np                      # Celdas: 2,3,4,5,6,7,8 (NP arrays, random choice with rng)
-import matplotlib.pyplot as plt         # Celdas: 2,6,7,8 (Visualización, gráficos, animación)
-import time                             # Celda: 5 (Medición de tiempos)
-from tqdm import tqdm                   # Celda: 5 (Barra de progreso, opcional)
-import argparse                         # Celdas: 1 (parseo de argumentos)
-import sys                              # Para obtener argv en parse_known_args
-from numba import njit, set_num_threads, get_num_threads, prange
-import os                               # Para obtener el número de hilos disponibles
-import h5py  # Para guardar resultados en formato HDF5
-import subprocess, threading, re, math # Última celda para la generación del video
+import numpy as np                                                  # Celdas: 2,3,4,5,6,7,8 (NP arrays, random choice with rng)
+import matplotlib.pyplot as plt                                     # Celdas: 2,6,7,8 (Visualización, gráficos, animación)
+import time                                                         # Celda: 5 (Medición de tiempos)
+from tqdm import tqdm                                               # Celda: 5 (Barra de progreso, opcional)
+from numba import njit, set_num_threads, get_num_threads, prange    # Celdas: 3,4,5 (Compilación JIT, paralelización)
+import os                                                           # Para obtener el número de hilos disponibles
+import h5py                                                         # Para guardar resultados en formato HDF5
+import subprocess, threading, re, math                              # Última celda para la generación del video
 
 # ─── Parámetros del modelo ────────────────────────────────────────────────────
 L        = int(32)                      #(int)
@@ -166,7 +164,6 @@ def sweep_kawasaki(config, L, J, Beta):
                     # Intercambiar espines
                     config[i, j], config[ni, nj] = config[ni, nj], config[i, j]
             
-    
 #──────────────────────────────────────────────────────────────────────────────#
 #──────────────────────────────────────────────────────────────────────────────#
 
@@ -211,7 +208,7 @@ with h5py.File(destino, 'w') as f:
         # Ahora calculamos las coordenadas de los espines a intercambiar mediante un vector de offsets
         offsets = np.array([(0, 1), (0, -1), (1, 0), (-1, 0)], dtype=np.int64)  # Al sumar el offset a la posición del espín, obtenemos la posición del espín vecino.
         # Ahora podemos barrer la red para elegir el par de espines a intercambiar.
-        sweep_kawasaki(config, L, J, T)
+        sweep_kawasaki(config, L, J, Beta)
         # Registrar observables
         energies[sweep] = energy(config, J, L)
         magnetizations[sweep] = magnetization(config, L)
