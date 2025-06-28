@@ -111,9 +111,19 @@ def calculate_acceptance(frames: np.ndarray) -> np.ndarray:
 
 
 @njit
-def delta_E_kawasaki(config, i, j, k, l, J):
-    """
-    Calcula el cambio de energía ΔE para un intercambio de espines en la dinámica de Kawasaki.
+def delta_E_kawasaki(config, L, i, j, k, l, J):
+    """Calcula el cambio de energía ΔE para la dinámica de Kawasaki.
+
+    Parameters
+    ----------
+    config : np.ndarray
+        Configuración actual de espines.
+    L : int
+        Tamaño del sistema.
+    i, j, k, l : int
+        Coordenadas de los espines a intercambiar.
+    J : float
+        Constante de acoplamiento.
     """
     delta_E = 0.0
     E_1 = 0.0
@@ -155,7 +165,7 @@ def sweep_kawasaki(config, L, J, Beta):
         # Escribimos el espín vecino en el archivo para depuración
         # Ahora que tenemos la posición del espín vecino, comprobamos que no sea el mismo espín (i, j) que el vecino (ni, nj)
         if config[i, j] != config[ni, nj]:
-            delta_E = delta_E_kawasaki(config, i, j, ni, nj, J)
+            delta_E = delta_E_kawasaki(config, L, i, j, ni, nj, J)
             # Ahora que tenemos el ΔE, podemos decidir si aceptamos o no el movimiento
             # La condición básicamente es que para ΔE <= 0, aceptamos el movimiento, ya que de ser así la probabilidad de aceptación es 1.
             # Si ΔE > 0, aceptamos el movimiento con probabilidad p = exp(-ΔE/T), y lo más eficiente es generar un número aleatorio entre 0 y 1 y comparar con p,
