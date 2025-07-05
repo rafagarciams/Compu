@@ -29,20 +29,28 @@ def establecer_numero_hilos(threads_percentage):
 # ─── Celda 2: Inicialización de la red y visualización ───────────────────────
 
 # Generar configuración inicial aleatoria de espines ±1
+
 def random_config_boundary(L, density):   
-    config = np.ones((L, L), dtype=int)
+    config = np.zeros((L, L), dtype=int)
     config[0, :] = -1  # Fila superior
-    config[L-1, :] = 1  # Fila inferior                             # Creamos una matriz LxL de espines con valor +1, y
-    for k in range(int(L * (L - 2) * (1 - density))):                     # aquí cambiamos N^2*(1 - densidad) espines a -1
-        i, j = np.random.randint(1, L-1), np.random.randint(0, L)     # ya que la densidad es la proporción de espines +1
-        config[i, j] = -1
+    config[L-1, :] = 1  # Fila inferior                            
+    for i in range(1, L-1):  # Excluimos las filas superior e inferior            
+        for j in range(L):   
+            if np.random.rand() < density:  # Cambiar espín a +1 con probabilidad de densidad
+                config[i, j] = 1
+            else:  # Cambiar espín a -1 con probabilidad de (1 - densidad)
+                config[i, j] = -1
     return config
 
+
 def random_config_non_boundary(L, density):   
-    config = np.ones((L, L), dtype=int)                            # Creamos una matriz LxL de espines con valor +1, y
-    for k in range(int(L * L * (1 - density))):                     # aquí cambiamos N^2*(1 - densidad) espines a -1
-        i, j = np.random.randint(0, L), np.random.randint(0, L)     # ya que la densidad es la proporción de espines +1
-        config[i, j] = -1
+    config = np.zeros((L, L), dtype=int)                          
+    for i in range(L):         # Usamos prange para paralelizar el bucle exterior  
+        for j in range(L):   
+            if np.random.rand() < density:  # Cambiar espín a +1 con probabilidad de densidad
+                config[i, j] = 1
+            else:  # Cambiar espín a -1 con probabilidad de (1 - densidad)
+                config[i, j] = -1
     return config
 
 # Forzar que la fila de arriba sea negativa y la de abajo positiva
@@ -228,7 +236,7 @@ def plot_observables(energies, magnetizations, n_sweeps, destino):
     plt.tight_layout()
     plt.savefig(os.path.join(destino, 'magnetization.png'), dpi=300, bbox_inches='tight')
 
-def run_monte_carlo(L, J, T, n_sweeps, thin, destino, Boundary_conditions, density, N, window, slope_threshold):
+def run_monte_carlo(L, J, T, n_sweeps, thin, destino, Boundary_conditions, density):
 
     # ─── Inicialización de la simulación ────────────────────────────────
     
@@ -248,7 +256,7 @@ def run_monte_carlo(L, J, T, n_sweeps, thin, destino, Boundary_conditions, densi
         # Dataset para las configuraciones: snapshots × L × L, dtype int8
         dataset = f.create_dataset(
             'configs',                      # 1. Nombre del dataset dentro del archivo HDF5
-            shape=(n_sweeps + 1, L, L),          # 2. Dimensiones: n_saved muestras de matrices L×L     
+            shape=(n_sweeps, L, L),          # 2. Dimensiones: n_saved muestras de matrices L×L     
             dtype='i1',                     # 3. Tipo de dato: int8 (espines ±1)
             compression='gzip',             # 4. Compresión: algoritmo gzip
             compression_opts=4,             # 5. Nivel de compresión (1=rápido/menos compacto … 9=lento/máximo)
@@ -269,7 +277,7 @@ def run_monte_carlo(L, J, T, n_sweeps, thin, destino, Boundary_conditions, densi
 
         # Barrido Monte Carlo
         start_time = time.time()
-        for sweep in tqdm(range(1, n_sweeps + 1), desc='MC Sweeps'):  # Esto es una simple barra de progreso, nada más
+        for sweep in tqdm(range(1, n_sweeps), desc='MC Sweeps'):  # Esto es una simple barra de progreso, nada más
             # Ahora podemos barrer la red para elegir el par de espines a intercambiar.
             if Boundary_conditions:
                 sweep_kawasaki_boundary(config, L, J, Beta)
@@ -399,7 +407,7 @@ def generate_video_from_hdf5(HDF5_FILE, DATASET, FILE_OUT, GPU_ID, INTERVAL, TAR
 
 # ─── Celda 7: Definición de función de simulación completa ─────────────────────────────────────────
 
-def run_whole_simulation(L, J, T, n_sweeps, threads_percentage, thin, Boundary_conditions, density,N, window, slope_threshold, HDF5_FILE, DATASET, FILE_OUT, GPU_ID, INTERVAL, TARGET_W, TARGET_H, MIN_SIDE):
+def run_whole_simulation(L, J, T, n_sweeps, threads_percentage, thin, Boundary_conditions, density, carpeta, HDF5_FILE, DATASET, FILE_OUT, GPU_ID, INTERVAL, TARGET_W, TARGET_H, MIN_SIDE):
 
     # ─── Establecer el número de hilos a usar ──────────────────────────────────────────────────────────────────────────
 
@@ -407,7 +415,7 @@ def run_whole_simulation(L, J, T, n_sweeps, threads_percentage, thin, Boundary_c
 
     # ─── Definición nombre carpeta ─────────────────────────────────────────────────────────────────────────────────────
 
-    carpeta = "results"                                                                                     # La idea en esta parte es simple, queremos crear
+                                                                                       # La idea en esta parte es simple, queremos crear
     if not os.path.exists(carpeta):                                                                         # una carpeta de resultados siempre que hagamos una
         os.makedirs(carpeta)                                                                                # simulación, la hayamos hecho antes o no, y que sea única.
     destino_base = os.path.join(carpeta, f"L{L}_J{J}_T{T}_sweeps{n_sweeps}_threads{threads_percentage}")    # Con este fin, hemos hecho un pequeño bucle que comprueba
@@ -420,7 +428,7 @@ def run_whole_simulation(L, J, T, n_sweeps, threads_percentage, thin, Boundary_c
 
     # Ahora ejecutamos el programa completo
 
-    run_monte_carlo(L, J, T, n_sweeps, thin, destino, Boundary_conditions, density, N, window, slope_threshold)
+    run_monte_carlo(L, J, T, n_sweeps, thin, destino, Boundary_conditions, density)
 
     generate_video_from_hdf5(HDF5_FILE, DATASET, FILE_OUT, GPU_ID, INTERVAL, TARGET_W, TARGET_H, MIN_SIDE, destino, thin)
 
@@ -428,18 +436,15 @@ def run_whole_simulation(L, J, T, n_sweeps, threads_percentage, thin, Boundary_c
 
 def main():
         # ─── Parámetros base del modelo ────────────────────────────────────────────────────────────────────────────────────
-    L                   = 8                     # (int) Tamaño de la red (LxL)
+    L                   = 2                     # (int) Tamaño de la red (LxL)
     J                   = 1.0                   # (float) Constante de interacción (J > 0 para ferromagnetismo)
     T                   = 1.0                   # (float) Temperatura del modelo de Ising 2D
     n_sweeps            = 100000                # (int) Número de sweeps (barridos) a realizar
     density             = 0.5                   # (float) Densidad de espines +1
     threads_percentage  = 100                   # (int) Porcentaje de hilos a usar (100% = todos los disponibles)
-    thin                = 500                   # (int) Frecuencia de guardado de configuraciones (1 = cada sweep, 2 = cada 2 sweeps, etc.)     
+    thin                = 1000                   # (int) Frecuencia de guardado de configuraciones (1 = cada sweep, 2 = cada 2 sweeps, etc.)     
     Boundary_conditions = True                  # (bool) Condiciones de frontera (True = eje "y" limitado, False = periódicas)
-    N                   = 1000                  # (int) Número de sweeps para comprobar estabilidad de la tasa de aceptación
-    window              = 1000                  # (int) Ventana de sweeps para comprobar estabilidad de la tasa de aceptación
-    slope_threshold     = 1e-5                  # (float) Umbral de pendiente para considerar estable la tasa de aceptación
-
+    
     # ─── Parámetros de usuario para la generación del vídeo ────────────────────────────────────────────────────────────
 
     HDF5_FILE = "configs.h5"                    # Nombre del archivo HDF5 con las configuraciones
@@ -458,5 +463,20 @@ def main():
 
         # ─── Celda 9: Ejecución del programa completo ──────────────────────────────────────────────
 
-    run_whole_simulation(L, J, T, n_sweeps, threads_percentage, thin, Boundary_conditions, density, N, window, slope_threshold, HDF5_FILE, DATASET, FILE_OUT, GPU_ID, INTERVAL, TARGET_W, TARGET_H, MIN_SIDE)
+    if not os.path.exists("results"):
+        os.makedirs("results")
+    destino_base = os.path.join("results", f"Simulacion_Multiple")
+    destino = destino_base
+    counter = 1
+    while os.path.exists(destino):
+        destino = f"{destino_base}_({counter})" 
+        counter += 1
+    os.makedirs(destino)  # Crear una carpeta de destino única
 
+    for i in range(1, 11):
+        carpeta = f"L{L}_J{J}_T{T}_sweeps{n_sweeps}_threads{threads_percentage}"  # Nombre de la carpeta de resultados
+        run_whole_simulation(L, J, T, n_sweeps, threads_percentage, thin, Boundary_conditions, density, carpeta, HDF5_FILE, DATASET, FILE_OUT, GPU_ID, INTERVAL, TARGET_W, TARGET_H, MIN_SIDE)
+    
+    
+
+main()
