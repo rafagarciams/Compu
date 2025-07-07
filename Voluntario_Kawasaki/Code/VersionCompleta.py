@@ -11,6 +11,8 @@ import os                               # Para obtener el número de hilos dispo
 import h5py  # Para guardar resultados en formato HDF5
 import subprocess, threading, re, math # Última celda para la generación del video
 
+np.set_printoptions(threshold=np.inf, linewidth=200)
+
 # ─── Configuración de semilla para reproducibilidad ──────────────────────────
 seed = None                             # None = usar entropía del sistema
 rng  = np.random.default_rng(seed)      # PCG64 RNG: seguro y adecuado para simulaciones
@@ -74,14 +76,21 @@ def init_config(destino, L, density, Boundary_conditions):
 
 # ─── Celda 3: Definición de observables termodinámicos ─────────────────────
 
-def energy(config, J):
+def new_energy(J, frames:np.ndarray) -> np.ndarray:
     """
     Calcula la energía total del modelo de Ising 2D con contorno periódico.
     """
     # Enlaces derecha e inferior para contar cada par una sola vez
-    right = np.roll(config, -1, axis=1)
-    down  = np.roll(config, -1, axis=0)
-    return -J * np.sum(config * (right + down))
+    nframes, H, W = frames.shape
+    Energy = np.zeros(nframes, dtype=np.float64)  # Array para almacenar la energía de cada frame
+    for frame in range(nframes):
+        config = frames[frame, :, :]
+        E = 0
+        right = np.roll(config, -1, axis=1)
+        down  = np.roll(config, -1, axis=0)
+        E = -J * np.sum(config * (right + down))
+        Energy[frame] = E
+    return Energy
 
 
 def magnetization(config):
@@ -89,6 +98,17 @@ def magnetization(config):
     Calcula la magnetización total del sistema.
     """
     return np.sum(config)
+
+def new_magnetization(frames: np.ndarray) -> np.ndarray:
+    """
+    Calcula la magnetización total del sistema para cada frame.
+    """
+    nframes, H, W = frames.shape
+    magnetizations = np.zeros(nframes, dtype=np.float64)  # Array para almacenar la magnetización de cada frame
+    for frame in range(nframes):
+        config = frames[frame, :, :]
+        magnetizations[frame] = np.sum(config)
+    return magnetizations
 
 # ─── Celda 4: Funciones del propio algoritmo de ising-kawasaki ──────────────
 
@@ -104,6 +124,23 @@ def calculate_acceptance(frames: np.ndarray) -> np.ndarray:
     attempts = H * W
     acceptance = accepted_swaps / attempts
     return acceptance
+
+def calcular_densidad_party(frames: np.ndarray) -> np.ndarray:
+    """
+    Calcula la densidad de partículas en cada frame.
+    """
+    nframes, H, W = frames.shape
+    config = frames[-1, :, :]  # Última columna de cada frame
+    print(config)
+    density= np.zeros(H, dtype=np.float64)  # Array para almacenar la densidad de partículas
+    # Sumamos los espines a lo largo del eje x, y lo almacenamos en un array
+    for i in range(H):
+        s = 0
+        for j in range(W):
+            s += (config[i, j] + 1)/2   # Convertimos espines -1, +1 a densidad 0, 1
+        density[i] = s  # Densidad media de partículas en la fila i
+    print(f"Densidad de partículas media: {density}")
+    return density
 
 
 @njit
@@ -189,18 +226,19 @@ def sweep_kawasaki_non_boundary(config, L, J, Beta):
 # Funciones para plotear los datos importantes
 
 
-def plot_observables(energies, magnetizations, n_sweeps, destino):
-    # ─── Acceptance rate ────────────────────────────────
+def plot_observables(destino, L, J):
 
-    # 1) Cargar todos los frames desde el HDF5
+    # Primero de todo, vamos a cargar los datos de las configuraciones guardadas en el archivo HDF5
     with h5py.File(os.path.join(destino, 'configs.h5'), 'r') as f:
         frames = f['configs'][:]    # np.ndarray (nframes, H, W)
+        thin = f.attrs['thin']  # Frecuencia de guardado
+    nframes, H, W = frames.shape
 
-    # 2) Calcular la aceptación
+    # ─── Acceptance rate ────────────────────────────────
+
     acceptance = calculate_acceptance(frames)
+    sweeps = np.arange(len(acceptance))  # Array de sweeps
 
-    # 3) Representar la evolución de la tasa de aceptación
-    sweeps = np.arange(1, len(acceptance) + 1)
     plt.figure(figsize=(6, 4))
     plt.plot(sweeps, acceptance, linestyle='-')
     plt.xlabel('Sweep')
@@ -208,13 +246,14 @@ def plot_observables(energies, magnetizations, n_sweeps, destino):
     plt.title('Evolución de la tasa de aceptación (Kawasaki)')
     plt.grid(True)
     plt.tight_layout()
-
-    # 4) Guardar la figura
     plt.savefig(os.path.join(destino, 'acceptance_rate.png'), dpi=300, bbox_inches='tight')
 
     # ─── Energía ────────────────────────────────
 
-    n_sweeps_array = np.arange(n_sweeps + 1)
+    energies = new_energy(J, frames)  # Calcular energía de cada frame
+    n_sweeps_array = np.arange(len(energies))  # Array de sweeps
+    for i in range(nframes):
+        n_sweeps_array[i] *= thin
 
     plt.figure(figsize=(6, 4))
     plt.plot(n_sweeps_array, energies, linestyle='-')
@@ -227,6 +266,9 @@ def plot_observables(energies, magnetizations, n_sweeps, destino):
     
     # ─── Magnetización ────────────────────────────────
 
+    magnetizations = new_magnetization(frames)  # Calcular magnetización de cada frame
+    n_sweeps_array = np.arange(len(magnetizations))  # Array de sweeps
+
     plt.figure(figsize=(6, 4))
     plt.plot(n_sweeps_array, magnetizations, linestyle='-')
     plt.xlabel('Sweep')
@@ -236,21 +278,31 @@ def plot_observables(energies, magnetizations, n_sweeps, destino):
     plt.tight_layout()
     plt.savefig(os.path.join(destino, 'magnetization.png'), dpi=300, bbox_inches='tight')
 
+    # ─── Densidad de part en dir y ────────────────────
+
+    y_array = np.arange(L)  # Eje y de la matriz de configuración
+    density = calcular_densidad_party(frames)
+    plt.figure(figsize=(6, 4))
+    plt.plot(density, y_array, linestyle='-')
+    plt.xlabel('Mean Particle Density')
+    plt.ylabel('y axis')
+    plt.title('Densidad de partículas media en la direccion y')
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(os.path.join(destino, 'DensityAlongYAxis.png'), dpi=300, bbox_inches='tight')
+
+
+
 def run_monte_carlo(L, J, T, n_sweeps, thin, destino, Boundary_conditions, density):
 
     # ─── Inicialización de la simulación ────────────────────────────────
     
     config = init_config(os.path.join(destino, "init_config.png"), L, density, Boundary_conditions)  # Guardar configuración inicial
     
-    # Inicializar arrays para almacenar energía y magnetización
-    energies = np.zeros(n_sweeps + 1)
-    magnetizations = np.zeros(n_sweeps + 1)
-    
     # Calcular Beta
     Beta = 1.0 / T
 
     # Parámetros de guardado
-    
 
     with h5py.File(os.path.join(destino, 'configs.h5'), 'w') as f:
         # Dataset para las configuraciones: snapshots × L × L, dtype int8
@@ -269,9 +321,6 @@ def run_monte_carlo(L, J, T, n_sweeps, thin, destino, Boundary_conditions, densi
         f.attrs['n_sweeps'] = n_sweeps
         f.attrs['thin'] = thin
 
-        # Medir estado inicial
-        energies[0] = energy(config, J)
-        magnetizations[0] = magnetization(config)
         # Guardar configuración inicial ds[0]
         dataset[0, :, :] = config
 
@@ -283,20 +332,15 @@ def run_monte_carlo(L, J, T, n_sweeps, thin, destino, Boundary_conditions, densi
                 sweep_kawasaki_boundary(config, L, J, Beta)
             else:
                 sweep_kawasaki_non_boundary(config, L, J, Beta)
-            # Registrar observables
-            energies[sweep] = energy(config, J)
-            magnetizations[sweep] = magnetization(config)
 
             # Almacenar las configuraciones 
-            
             dataset[sweep, :, :] = config
-
         end_time = time.time()
 
         print(f"Simulación completada en {end_time - start_time:.2f} s")
     
     # Graficar y guardar observables
-    plot_observables(energies, magnetizations, n_sweeps, destino)
+    plot_observables(destino, L, J)
 
 # Celda 6: pipeline GPU-BOUND con NVENC a partir de HDF5
 
@@ -436,13 +480,13 @@ def run_whole_simulation(L, J, T, n_sweeps, threads_percentage, thin, Boundary_c
 
 def main():
         # ─── Parámetros base del modelo ────────────────────────────────────────────────────────────────────────────────────
-    L                   = 2                     # (int) Tamaño de la red (LxL)
+    L                   = 64                    # (int) Tamaño de la red (LxL)
     J                   = 1.0                   # (float) Constante de interacción (J > 0 para ferromagnetismo)
     T                   = 1.0                   # (float) Temperatura del modelo de Ising 2D
-    n_sweeps            = 100000                # (int) Número de sweeps (barridos) a realizar
+    n_sweeps            = 10000               # (int) Número de sweeps (barridos) a realizar
     density             = 0.5                   # (float) Densidad de espines +1
     threads_percentage  = 100                   # (int) Porcentaje de hilos a usar (100% = todos los disponibles)
-    thin                = 1000                   # (int) Frecuencia de guardado de configuraciones (1 = cada sweep, 2 = cada 2 sweeps, etc.)     
+    thin                = 1                  # (int) Frecuencia de guardado de configuraciones (1 = cada sweep, 2 = cada 2 sweeps, etc.)     
     Boundary_conditions = True                  # (bool) Condiciones de frontera (True = eje "y" limitado, False = periódicas)
     
     # ─── Parámetros de usuario para la generación del vídeo ────────────────────────────────────────────────────────────
@@ -472,11 +516,25 @@ def main():
         destino = f"{destino_base}_({counter})" 
         counter += 1
     os.makedirs(destino)  # Crear una carpeta de destino única
+    # Ahora inicializamos la variable que queramos variar, y dentro del bucle hacemos que vaya modificándose con el número de iteración.
+    #En este caso vamos a variar el valor de la temperatura T.
+    T = 0.5
+    # Aquí dejo un espacio para escribir algún parámetro a parte que se quiera modificar, como el número de pasos montecarlo o 
+    # el tamaño de la red, en función del número de simulaciones que se quieran hacer.
 
-    for i in range(1, 11):
-        carpeta = f"L{L}_J{J}_T{T}_sweeps{n_sweeps}_threads{threads_percentage}"  # Nombre de la carpeta de resultados
-        run_whole_simulation(L, J, T, n_sweeps, threads_percentage, thin, Boundary_conditions, density, carpeta, HDF5_FILE, DATASET, FILE_OUT, GPU_ID, INTERVAL, TARGET_W, TARGET_H, MIN_SIDE)
+    L = 16  # Tamaño de la red (LxL)
+
+    # Definimos ahora i como el número de iteración, y lo inicializamos a 1.
+    i = 1
+
+    #Ahora sí, metemos el bucle que ejecutará las simulaciones.
+    start_time = time.time()  # Medir el tiempo de ejecución total
+    while T <= 1.0:  # Por ejemplo, de 0.5 a 5.0 en incrementos de 0.5
+        run_whole_simulation(L, J, T, n_sweeps, threads_percentage, thin, Boundary_conditions, density, destino, HDF5_FILE, DATASET, FILE_OUT, GPU_ID, INTERVAL, TARGET_W, TARGET_H, MIN_SIDE)
+        T += 0.5  # Incrementar la temperatura en 0.5 cada iteración
+        i += 1
+    end_time = time.time()  # Medir el tiempo de ejecución total
     
-    
+    print(f"Simulación completada en {end_time - start_time:.2f} s")
 
 main()
