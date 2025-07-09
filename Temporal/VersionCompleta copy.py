@@ -34,7 +34,7 @@ def establecer_numero_hilos(threads_percentage):
 
 def random_config_boundary(L, density):   
     config = np.ones((L, L), dtype=int)
-    config[0, :] = -1  # Fila superior
+    config[0, :] = -1  # Fila superior                                                     
     while single_magnetization(config) != (2*density - 1):  # Aseguramos que la magnetización sea igual a la densidad deseada
         i, j = np.random.randint(1, L-1), np.random.randint(0, L)  # Elegir un espín aleatorio
         config[i, j] = -1
@@ -42,45 +42,23 @@ def random_config_boundary(L, density):
 
 
 def random_config_non_boundary(L, density):   
-    config = np.ones((L, L), dtype=int)      # Inicializar toda la red con espines +1
+    config = np.ones((L, L), dtype=int)      # Inicializar toda la red con espines +1                    
     while single_magnetization(config) != (2*density - 1):  # Aseguramos que la magnetización sea igual a la densidad deseada
         i, j = np.random.randint(0, L), np.random.randint(0, L)  # Elegir un espín aleatorio
         config[i, j] = -1
     return config
 
-def asimmetric_config(L, density):
-    config = np.ones((L, L), dtype=int)      # Inicializar toda la red con espines 1
-
-    # Ahora simplemente hacemos que el porcentaje "density" superior sean -1s:
-    # Para ello la forma más sencilla es:
-    #   · Calcular el número de espines -1
-    #   · Recorrer la malla llenando de -1
-
-    DownSpins = (1-density)*L*L # Número de espines -1 a colocar
-
-    for i in range(L):
-        for j in range(L):
-            if DownSpins > 0:
-                config[i, j] = -1 
-                DownSpins += -1
-            else:
-                return config
-    
-    
-
+# Forzar que la fila de arriba sea negativa y la de abajo positiva
 
 # Ahora creamos una función para guardar la configuración inicial en un archivo .png, y que devuelva la configuración
-def init_config(destino, L, density, Boundary_conditions, Asimmetric):
+def init_config(destino, L, density, Boundary_conditions):
     """
     Guarda la configuración inicial en un archivo .png.
     """
-    if not Asimmetric:
-        if Boundary_conditions:
-            config = random_config_boundary(L, density)  # Generar configuración aleatoria y fijar condiciones de frontera 
-        else:
-            config = random_config_non_boundary(L, density)
+    if Boundary_conditions:
+        config = random_config_boundary(L, density)  # Generar configuración aleatoria y fijar condiciones de frontera 
     else:
-        config = asimmetric_config(L, density)
+        config = random_config_non_boundary(L, density)
     plt.figure(figsize=(5, 5))
     plt.imshow(config, cmap='gray', interpolation='nearest')
     plt.title('Configuración inicial aleatoria')
@@ -88,8 +66,6 @@ def init_config(destino, L, density, Boundary_conditions, Asimmetric):
     plt.savefig(destino, dpi=300, bbox_inches='tight')
     plt.close()
     return config
-
-
 
 # ─── Celda 3: Definición de observables termodinámicos ─────────────────────
 
@@ -136,7 +112,7 @@ def new_magnetization(frames: np.ndarray) -> np.ndarray:
         magnetizations[frame] = np.sum(config)/(H*W)
     return magnetizations
 
-def domain_magnetization(frames: np.ndarray, density) -> np.ndarray:
+def domain_magnetization(frames: np.ndarray) -> np.ndarray:
     """
     Calcula la magnetización del sistema para el dominio superior e inferior. Para ello esta función
     las calcula y las devuelve en un array de dos dimensiones, 2xnframes, donde la primera fila
@@ -144,11 +120,11 @@ def domain_magnetization(frames: np.ndarray, density) -> np.ndarray:
     """
     nframes, H, W = frames.shape
     magnetizations = np.zeros((2, nframes), dtype=np.float64)  # Array para almacenar la magnetización de cada frame
-    lim = int(np.rint(H*density))
+    lim = H // 2  # Límite para dividir el dominio superior e inferior
     for frame in range(nframes):
         config = frames[frame, :, :]
-        magnetizations[0, frame] = np.sum(config[0:(H - lim), :])/((H - lim)*W)
-        magnetizations[1, frame] = np.sum(config[(H - lim):H, :])/(lim*W)
+        magnetizations[0, frame] = np.sum(config[0:lim, :])/(lim*W)
+        magnetizations[1, frame] = np.sum(config[lim:H, :])/((H-lim)*W)
     return magnetizations
 
 def linear_regression_slope(x, y):
@@ -231,7 +207,7 @@ def magnetic_susceptibility(domain_magnetization: np.ndarray, temperature: float
 def calculate_acceptance(frames: np.ndarray) -> np.ndarray:
     
     nframes, H, W = frames.shape
-    # True donde el espín cambió respecto al sweep anterior
+    # `True` donde el espín cambió respecto al sweep anterior
     changes = frames[1:] != frames[:-1]               # shape (nframes-1, H, W)
     diff_counts = changes.reshape(nframes-1, -1).sum(axis=1)
     # Cada swap válido intercambia dos posiciones
@@ -358,7 +334,7 @@ def sweep_kawasaki_non_boundary(config, L, J, Beta):
 # ─── Celda 5: Función del bucle Monte Carlo y recolección de datos con HDF5 ────────────
 # Funciones para plotear los datos importantes
 
-def plot_observables(destino, J, density):
+def plot_observables(destino, L, J):
 
     # Primero de todo, vamos a cargar los datos de las configuraciones guardadas en el archivo HDF5
     with h5py.File(os.path.join(destino, 'configs.h5'), 'r') as f:
@@ -416,7 +392,7 @@ def plot_observables(destino, J, density):
 
     # ─── Magnetización del dominio superior e inferior ────────────────────────────────
 
-    domain_magnetizations = domain_magnetization(frames, density)   # Calcular magnetización del dominio superior e inferior
+    domain_magnetizations = domain_magnetization(frames)            # Calcular magnetización del dominio superior e inferior
     n_sweeps_array = np.arange(len(domain_magnetizations[0, :]))    # Array de sweeps
 
     for i in range(len(n_sweeps_array)):
@@ -456,11 +432,11 @@ def plot_observables(destino, J, density):
 
 
 
-def run_monte_carlo(L, J, T, n_sweeps, thin, destino, Boundary_conditions, density, max_window, threshold, Asimmetric):
+def run_monte_carlo(L, J, T, n_sweeps, thin, destino, Boundary_conditions, density, max_window, threshold):
 
     # ─── Inicialización de la simulación ────────────────────────────────
     
-    config = init_config(os.path.join(destino, "init_config.png"), L, density, Boundary_conditions, Asimmetric)  # Guardar configuración inicial
+    config = init_config(os.path.join(destino, "init_config.png"), L, density, Boundary_conditions)  # Guardar configuración inicial
     saved_sweeps = n_sweeps // thin + 1 # Número de sweeps guardados
     # Calcular Beta
     Beta = 1.0 / T
@@ -504,11 +480,11 @@ def run_monte_carlo(L, J, T, n_sweeps, thin, destino, Boundary_conditions, densi
 
             # Almacenar las configuraciones 
             
-            if sweep % thin == 0:  # Guardar cada thin sweeps
+            if sweep % thin == 0:  # Guardar cada `thin` sweeps
                 i = sweep // thin
                 dataset[i, :, :] = config
                 # Ahora creamos la condición de parada, que será cuando la pendiente de la tasa de aceptación sea menor que un umbral (se establice)
-                if (i >= int(0.1 * saved_sweeps)) and not Asimmetric:  # Si hemos guardado al menos el 5% de los sweeps y la config es aleatoria
+                if i >= int(0.1 * saved_sweeps):  # Si hemos guardado al menos el 5% de los sweeps
                     # Calcular la tasa de aceptación y detener si es menor que el umbral
                     window = min(max_window, i//4)  # Ventana de datos para la tasa de aceptación (entre el 25% de los sweeps guardados y el máximo establecido)
                     if window >= 3:   
@@ -527,11 +503,10 @@ def run_monte_carlo(L, J, T, n_sweeps, thin, destino, Boundary_conditions, densi
                         elif current_acceptance >= initial_acceptance*1.2:  # Si la tasa de aceptación ha aumentado un 20% respecto a la inicial
                             print(f"Simulación detenida en sweep {sweep} por tasa de aceptación creciente.")
                             break
-            if not Asimmetric:    
-                if sweep == n_sweeps:  # Si hemos llegado al último sweep, escribimos el último valor de pendiente de aceptación
-                    x = np.arange(acceptance_array.size)
-                    print("\n")
-                    print(abs(linear_regression_slope(x, acceptance_array)))
+            if sweep == n_sweeps:  # Si hemos llegado al último sweep, escribimos el último valor de pendiente de aceptación
+                x = np.arange(acceptance_array.size)
+                print("\n")
+                print(abs(linear_regression_slope(x, acceptance_array)))
             
 
         dataset.resize((i + 1, L, L))  # Ajustar tamaño final del dataset
@@ -542,7 +517,7 @@ def run_monte_carlo(L, J, T, n_sweeps, thin, destino, Boundary_conditions, densi
         print(f"Simulación completada en {end_time - start_time:.2f} s")
 
     # Graficar, guardar y devolver los observables
-    return plot_observables(destino, J, density)
+    return plot_observables(destino, L, J)
 
 # Celda 6: pipeline GPU-BOUND con NVENC a partir de HDF5
 
@@ -645,7 +620,7 @@ def generate_video_from_hdf5(HDF5_FILE, DATASET, FILE_OUT, GPU_ID, INTERVAL, TAR
 
 # ─── Celda 7: Definición de función de simulación completa ─────────────────────────────────────────
 
-def run_whole_simulation(L, J, T, n_sweeps, threads_percentage, thin, Boundary_conditions, density, carpeta, max_window, threshold, Asimmetric, HDF5_FILE, DATASET, FILE_OUT, GPU_ID, INTERVAL, TARGET_size, MIN_SIDE):
+def run_whole_simulation(L, J, T, n_sweeps, threads_percentage, thin, Boundary_conditions, density, carpeta, max_window, threshold, HDF5_FILE, DATASET, FILE_OUT, GPU_ID, INTERVAL, TARGET_size, MIN_SIDE):
 
     # ─── Establecer el número de hilos a usar ──────────────────────────────────────────────────────────────────────────
 
@@ -666,7 +641,7 @@ def run_whole_simulation(L, J, T, n_sweeps, threads_percentage, thin, Boundary_c
 
     # Ahora ejecutamos el programa completo
 
-    observables = run_monte_carlo(L, J, T, n_sweeps, thin, destino, Boundary_conditions, density, max_window, threshold, Asimmetric)
+    observables = run_monte_carlo(L, J, T, n_sweeps, thin, destino, Boundary_conditions, density, max_window, threshold)
 
     generate_video_from_hdf5(HDF5_FILE, DATASET, FILE_OUT, GPU_ID, INTERVAL, TARGET_size, MIN_SIDE, destino)
 
@@ -766,30 +741,6 @@ def plot_Tcrit_L(T_crit_L, L_init, L_step, destino, filename):
     plt.tight_layout()
     plt.savefig(os.path.join(destino, filename), dpi=300, bbox_inches='tight')
 
-def plot_magnetizations_vs_temp(magnetizations_vs_temp: np.ndarray, T_init, T_step, L_init, L_step, destino):
-
-    n_Temp, n_Ls, domain = magnetizations_vs_temp.shape
-    T_values = np.arange(T_init, T_init + (n_Temp - 1) * T_step, T_step)
-    L_values = np.arange(L_init, L_init + n_Ls * L_step, L_step) 
-
-    if not os.path.exists(os.path.join(destino, "Magnetizations_vs_temp")):
-        carpeta_magnetizations = os.path.join(destino, "Magnetizations_vs_temp")
-        os.makedirs(carpeta_magnetizations)
-
-    for i in range(n_Ls):
-        plt.figure(figsize=(10, 6))
-        plt.plot(T_values, magnetizations_vs_temp[:, i, 0], linestyle='-', color='b')
-        plt.plot(T_values, magnetizations_vs_temp[:, i, 1], linestyle='-', color='r')
-        plt.xlabel('Temperatura (T)')
-        plt.ylabel('Energía media por partícula')
-        plt.title('Energía media por partícula por temperatura a diferentes tamaños de red')
-        plt.grid(True)
-        plt.tight_layout()
-        plt.savefig(os.path.join(carpeta_magnetizations, f'L_{L_values[i]}.png'), dpi=300, bbox_inches='tight')
-
-
-    
-
 # ─── Celda 9: Ejecución del programa completo ──────────────────────────────────────────────
 
 def main():
@@ -799,14 +750,13 @@ def main():
     L                   = 16                        # (int) Tamaño de la red (LxL)
     J                   = 1.0                       # (float) Constante de interacción (J > 0 para ferromagnetismo)
     T                   = 1.0                       # (float) Temperatura del modelo de Ising 2D
-    n_sweeps            = 10000                     # (int) Número de sweeps (barridos) a realizar
-    density             = 0.75                       # (float) Densidad de espines +1
+    n_sweeps            = 1000000                   # (int) Número de sweeps (barridos) a realizar
+    density             = 0.5                       # (float) Densidad de espines +1
     threads_percentage  = 100                       # (int) Porcentaje de hilos a usar (100% = todos los disponibles)
-    thin                = 10                        # (int) Frecuencia de guardado de configuraciones (1 = cada sweep, 2 = cada 2 sweeps, etc.)     
+    thin                = 1000                      # (int) Frecuencia de guardado de configuraciones (1 = cada sweep, 2 = cada 2 sweeps, etc.)     
     Boundary_conditions = True                      # (bool) Condiciones de frontera (True = eje "y" limitado, False = periódicas)
-    max_window          = 1000                      # (int) Ventana de datos para la tasa de aceptación (número de sweeps a considerar para calcular la pendiente de la tasa de aceptación)
-    threshold           = 10**-8                    # (float) Umbral de pendiente para aceptar la tasa de aceptación (si la pendiente es menor que este valor, se acepta)
-    Asimmetric          = True                      # (bool) Densidad de espines asimetricamente distribuidos
+    max_window          = 100000                    # (int) Ventana de datos para la tasa de aceptación (número de sweeps a considerar para calcular la pendiente de la tasa de aceptación)
+    threshold           = 10**-10                   # (float) Umbral de pendiente para aceptar la tasa de aceptación (si la pendiente es menor que este valor, se acepta)
     
     # ─── Parámetros de usuario para la generación del vídeo ────────────────────────────────────────────────────────────
 
@@ -837,14 +787,14 @@ def main():
 
     # Ahora inicializamos los parámetros de temperatura:
     T_init = 2.00                                           # Temperatura inicial
-    T_step = 0.10                                           # Paso de temperatura
-    T_max  = 3.50                                           # Temperatura máxima
+    T_step = 0.05                                           # Paso de temperatura
+    T_max  = 2.50                                           # Temperatura máxima
 
     # Ahora hacemos lo mismo con L:
 
-    L_init = 16                                                                     # Tamaño de red inicial
+    L_init = 32                                                                     # Tamaño de red inicial
     L_step = 4                                                                      # Paso de tamaño de red
-    L_max  = 20                                                                     # Tamaño de red máximo
+    L_max  = 48                                                                     # Tamaño de red máximo
 
     
     n_temps = int(np.rint((T_max - T_init) / T_step)) + 1                                # Número de temperaturas a simular
@@ -854,7 +804,6 @@ def main():
     mean_energies_per_particle = np.zeros((n_temps, n_Ls))                          # Inicializar un array para almacenar la energía media por partícula
     SH = np.zeros((n_temps, n_Ls))                                                  # Inicializar un array para almacenar la capacidad calorífica
     MS = np.zeros((n_temps, n_Ls))                                                  # Inicializar un array para almacenar la susceptibilidad magnética (media de los 2 dominios)
-    magnetization_vs_temp = np.zeros((n_temps, n_Ls, 2))                            # Inicializar un array para almacenar la magnetización frente a la temperatura
     dict_densities = {}                                                             # Inicializar un diccionario para almacenar las densidades de partículas
     L = L_init                                                                      # Inicializar el tamaño de la red
     j = 0                                                                           # Inicializar el contador de iteraciones para el tamaño de la red
@@ -870,12 +819,11 @@ def main():
 
             T = T_init + i * T_step
             # Ahora llamamos a la función general, que nos devuelve los observables en formato array, sin necesidad de acceder a los archivos uno a uno.
-            observables = run_whole_simulation(L, J, T, n_sweeps, threads_percentage, thin, Boundary_conditions, density, destino, max_window, threshold, Asimmetric, HDF5_FILE, DATASET, FILE_OUT, GPU_ID, INTERVAL, TARGET_size, MIN_SIDE)
+            observables = run_whole_simulation(L, J, T, n_sweeps, threads_percentage, thin, Boundary_conditions, density, destino, max_window, threshold, HDF5_FILE, DATASET, FILE_OUT, GPU_ID, INTERVAL, TARGET_size, MIN_SIDE)
             density_y[i, :] = observables['density']  # Guardar la densidad de partículas a lo largo de la dirección y en el array
             mean_energies_per_particle[i, j] = observables['mean_energy_per_particle']  # Guardar la energía media por partícula
             SH[i, j] = specific_heat(observables['energy'], T, L)  # Calcular el calor específico y guardarlo
             MS[i, j] = magnetic_susceptibility(observables['domain_magnetization'], T, L)  # Calcular la susceptibilidad magnética y guardarla
-            magnetization_vs_temp[i, j, :] = observables['domain_magnetization'][:, -1]
 
         dict_densities[f'Density_L{L}'] = density_y                                 # Guardar la densidad de partículas en el diccionario
     end_time = time.time()                                                          # Medir el tiempo de ejecución total
@@ -886,11 +834,10 @@ def main():
         Carpeta_Observables = os.path.join(destino, "Observables")
         os.makedirs(Carpeta_Observables)
     
-    plot_density_y(dict_densities, T_init, T_step, L_init, L_step, Carpeta_Observables)                             # Graficar la densidad de partículas a lo largo de la dirección y para cada temperatura                 
+    plot_density_y(dict_densities, T_init, T_step, L_init, L_step, Carpeta_Observables)                                  # Graficar la densidad de partículas a lo largo de la dirección y para cada temperatura                 
     plot_mean_energy_per_particle(mean_energies_per_particle, T_init, T_step, L_init, L_step, Carpeta_Observables)  # Graficar la energía media por partícula para cada temperatura
     plot_specific_heat(SH, T_init, T_step, L_init, L_step, Carpeta_Observables)                                     # Graficar el calor específico para cada temperatura
     plot_susceptibility(MS, T_init, T_step, L_init, L_step, Carpeta_Observables)                                    # Graficar la susceptibilidad magnética para cada temperatura
-    plot_magnetizations_vs_temp(magnetization_vs_temp, T_init, T_step, L_init, L_step, Carpeta_Observables)         # Graficar la magnetización frente a la temperatura
 
     # Ahora hay que dar el valor de la temperatura crítica en función de L.
     # Para esto buscamos la temperatura donde se produce el pico de calor específico.
