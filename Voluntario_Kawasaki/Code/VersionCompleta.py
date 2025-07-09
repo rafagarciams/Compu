@@ -662,10 +662,9 @@ def plot_density_y(dict_densities, T_init, T_step, L_init, L_step, destino):
         n_Temp, L = density_y.shape                                     # n_Temp = número de temperaturas, L = tamaño de la red
         y_axis = np.arange(L)                                           # Eje y de la matriz de configuración
         T_values = np.arange(T_init, T_init + (n_Temp - 1) * T_step, T_step)
-        print(T_values)
         plt.figure(figsize=(10, 6))
         for i in range(n_Temp):
-            plt.plot(density_y[i,:], y_axis, linestyle='-', label=f'T={T_values[i]}')
+            plt.plot(density_y[i,:], y_axis, linestyle='-', label=f'T={T_values[i]:.2f}')
         plt.xlabel('y axis')
         plt.ylabel('Densidad de partículas')
         plt.title(f'Densidad de partículas a lo largo de la dirección y para {n_Temp} temperaturas y L={L}')
@@ -797,8 +796,10 @@ def main():
     L_step = 4                                                                      # Paso de tamaño de red
     L_max  = 20                                                                     # Tamaño de red máximo
 
-    n_temps = int((T_max - T_init) / T_step) + 1                                    # Número de temperaturas a simular
-    n_Ls = int((L_max - L_init) / L_step) + 1                                       # Número de tamaños de red a simular
+    
+    n_temps = int(np.rint((T_max - T_init) / T_step)) + 1                                # Número de temperaturas a simular
+    print(n_temps)
+    n_Ls = int(np.rint((L_max - L_init) / L_step)) + 1                                      # Número de tamaños de red a simular
 
     # Inicializamos los arrays que vamos a usar para almacenar los resultados de las simulaciones.
     mean_energies_per_particle = np.zeros((n_temps, n_Ls))                          # Inicializar un array para almacenar la energía media por partícula
@@ -813,8 +814,8 @@ def main():
     start_time = time.time()                                                        # Medir el tiempo de ejecución total
     for j in range(n_Ls):
 
-        density_y = np.zeros((n_temps, L))                                         # Inicializar un array para almacenar la densidad de partículas a lo largo de la dirección y
         L = L_init + j * L_step
+        density_y = np.zeros((n_temps, L))                                         # Inicializar un array para almacenar la densidad de partículas a lo largo de la dirección y
         for i in range(n_temps):                                                           # Por ejemplo, de 0.5 a 5.0 en incrementos de 0.5
 
             T = T_init + i * T_step
