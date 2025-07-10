@@ -797,14 +797,14 @@ def main():
     L                   = 16                        # (int) Tamaño de la red (LxL)
     J                   = 1.0                       # (float) Constante de interacción 
     T                   = 1.0                       # (float) Temperatura del modelo de Ising 2D
-    n_sweeps            = 5000000                   # (int) Número de sweeps (barridos) a realizar
+    n_sweeps            = 100000                   # (int) Número de sweeps (barridos) a realizar
     density             = 0.5                      # (float) Densidad de espines +1
     threads_percentage  = 100                       # (int) Porcentaje de hilos a usar (100% = todos los disponibles)
-    thin                = 5000                      # (int) Frecuencia de guardado de configuraciones (1 = cada sweep, 2 = cada 2 sweeps, etc.)     
+    thin                = 100                      # (int) Frecuencia de guardado de configuraciones (1 = cada sweep, 2 = cada 2 sweeps, etc.)     
     Boundary_conditions = True                      # (bool) Condiciones de frontera (True = eje "y" limitado, False = periódicas)
     max_window          = 1000                      # (int) Ventana de datos para la tasa de aceptación (número de sweeps a considerar para calcular la pendiente de la tasa de aceptación)
     threshold           = 10**-8                    # (float) Umbral de pendiente para aceptar la tasa de aceptación (si la pendiente es menor que este valor, se acepta)
-    Asimmetric          = False                      # (bool) Densidad de espines asimetricamente distribuidos
+    Asimmetric          = True                      # (bool) Densidad de espines asimetricamente distribuidos
     
     # ─── Parámetros de usuario para la generación del vídeo ────────────────────────────────────────────────────────────
 
@@ -834,15 +834,15 @@ def main():
     os.makedirs(destino)  # Crear una carpeta de destino única
 
     # Ahora inicializamos los parámetros de temperatura:
-    T_init = 1.0                                            # Temperatura inicial
-    T_step = 0.25                                           # Paso de temperatura
-    T_max  = 2.50                                           # Temperatura máxima
+    T_init = 1.5                                            # Temperatura inicial
+    T_step = 0.5                                             # Paso de temperatura
+    T_max  = 2.5                                            # Temperatura máxima
 
     # Ahora hacemos lo mismo con L:
 
     L_init = 12                                                                     # Tamaño de red inicial
     L_step = 4                                                                      # Paso de tamaño de red
-    L_max  = 24                                                                     # Tamaño de red máximo
+    L_max  = 20                                                                     # Tamaño de red máximo
 
     
     n_temps = int(np.rint((T_max - T_init) / T_step)) + 1                                # Número de temperaturas a simular
