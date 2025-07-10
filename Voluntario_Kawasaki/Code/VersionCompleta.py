@@ -437,8 +437,6 @@ def plot_observables(destino, J, density):
 
     density = calcular_densidad_party(frames)
     y_array = np.arange(len(density))                           # Eje y de la matriz de configuración
-    for i in range(len(y_array)):
-        y_array[i] = y_array[i]*thin
 
     plt.figure(figsize=(6, 4))
     plt.plot(density, y_array, linestyle='-')
@@ -799,14 +797,14 @@ def main():
     L                   = 16                        # (int) Tamaño de la red (LxL)
     J                   = 1.0                       # (float) Constante de interacción 
     T                   = 1.0                       # (float) Temperatura del modelo de Ising 2D
-    n_sweeps            = 10000                     # (int) Número de sweeps (barridos) a realizar
-    density             = 0.75                       # (float) Densidad de espines +1
+    n_sweeps            = 5000000                   # (int) Número de sweeps (barridos) a realizar
+    density             = 0.5                      # (float) Densidad de espines +1
     threads_percentage  = 100                       # (int) Porcentaje de hilos a usar (100% = todos los disponibles)
-    thin                = 10                        # (int) Frecuencia de guardado de configuraciones (1 = cada sweep, 2 = cada 2 sweeps, etc.)     
+    thin                = 5000                      # (int) Frecuencia de guardado de configuraciones (1 = cada sweep, 2 = cada 2 sweeps, etc.)     
     Boundary_conditions = True                      # (bool) Condiciones de frontera (True = eje "y" limitado, False = periódicas)
     max_window          = 1000                      # (int) Ventana de datos para la tasa de aceptación (número de sweeps a considerar para calcular la pendiente de la tasa de aceptación)
     threshold           = 10**-8                    # (float) Umbral de pendiente para aceptar la tasa de aceptación (si la pendiente es menor que este valor, se acepta)
-    Asimmetric          = True                      # (bool) Densidad de espines asimetricamente distribuidos
+    Asimmetric          = False                      # (bool) Densidad de espines asimetricamente distribuidos
     
     # ─── Parámetros de usuario para la generación del vídeo ────────────────────────────────────────────────────────────
 
@@ -836,15 +834,15 @@ def main():
     os.makedirs(destino)  # Crear una carpeta de destino única
 
     # Ahora inicializamos los parámetros de temperatura:
-    T_init = 2.00                                           # Temperatura inicial
-    T_step = 0.125                                          # Paso de temperatura
+    T_init = 1.0                                            # Temperatura inicial
+    T_step = 0.25                                           # Paso de temperatura
     T_max  = 2.50                                           # Temperatura máxima
 
     # Ahora hacemos lo mismo con L:
 
-    L_init = 16                                                                     # Tamaño de red inicial
+    L_init = 12                                                                     # Tamaño de red inicial
     L_step = 4                                                                      # Paso de tamaño de red
-    L_max  = 20                                                                     # Tamaño de red máximo
+    L_max  = 24                                                                     # Tamaño de red máximo
 
     
     n_temps = int(np.rint((T_max - T_init) / T_step)) + 1                                # Número de temperaturas a simular
