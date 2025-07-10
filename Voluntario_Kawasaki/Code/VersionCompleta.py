@@ -255,7 +255,7 @@ def calcular_densidad_party(frames: np.ndarray) -> np.ndarray:
         s = 0
         for j in range(W):
             s += (config[i, j] + 1)/2           # Convertimos espines -1, +1 a densidad 0, 1
-        density[i] = s                          # Densidad media de partículas en la fila i
+        density[i] = s/W                        # Densidad media de partículas en la fila i
     return density
 
 @njit
@@ -686,12 +686,12 @@ def plot_density_y(dict_densities, T_init, T_step, L_init, L_step, destino):
         density_y = dict_densities[f'Density_L{L_init + j * L_step}']   # np.ndarray (n_Temp, L)
         n_Temp, L = density_y.shape                                     # n_Temp = número de temperaturas, L = tamaño de la red
         y_axis = np.arange(L)                                           # Eje y de la matriz de configuración
-        T_values = np.arange(T_init, T_init + (n_Temp - 1) * T_step, T_step)
+        T_values = T_init + np.arange(n_Temp)*T_step 
         plt.figure(figsize=(10, 6))
         for i in range(n_Temp):
             plt.plot(density_y[i,:], y_axis, linestyle='-', label=f'T={T_values[i]:.2f}')
-        plt.xlabel('y axis')
-        plt.ylabel('Densidad de partículas')
+        plt.xlabel('Densidad de partículas')
+        plt.ylabel('y axis')
         plt.title(f'Densidad de partículas a lo largo de la dirección y para {n_Temp} temperaturas y L={L}')
         plt.legend()
         plt.grid(True)
@@ -701,8 +701,8 @@ def plot_density_y(dict_densities, T_init, T_step, L_init, L_step, destino):
 def plot_mean_energy_per_particle(mean_energies_per_particle, T_init, T_step, L_init, L_step, destino):
 
     n_Temp, n_Ls = mean_energies_per_particle.shape
-    T_values = np.arange(T_init, T_init + (n_Temp - 1) * T_step, T_step)
-    L_values = np.arange(L_init, L_init + n_Ls * L_step, L_step)
+    T_values = T_init + np.arange(n_Temp)*T_step
+    L_values = L_init + np.arange(n_Ls)*L_step
 
     plt.figure(figsize=(10, 6))
     for i in range(n_Ls):
@@ -718,8 +718,8 @@ def plot_mean_energy_per_particle(mean_energies_per_particle, T_init, T_step, L_
 def plot_specific_heat(SH, T_init, T_step, L_init, L_step, destino):
 
     n_Temp, n_Ls = SH.shape
-    T_values = np.arange(T_init, T_init + (n_Temp - 1) * T_step, T_step)
-    L_values = np.arange(L_init, L_init + n_Ls * L_step, L_step)    
+    T_values = T_init + np.arange(n_Temp)*T_step
+    L_values = L_init + np.arange(n_Ls)*L_step    
     
     plt.figure(figsize=(10, 6))
     for i in range(n_Ls):
@@ -737,8 +737,8 @@ def plot_susceptibility(MS, T_init, T_step, L_init, L_step, destino):
     Plotea la susceptibilidad magnética en función de la temperatura.
     """
     n_Temp, n_Ls = MS.shape
-    T_values = np.arange(T_init, T_init + (n_Temp - 1) * T_step, T_step)
-    L_values = np.arange(L_init, L_init + n_Ls * L_step, L_step)
+    T_values = T_init + np.arange(n_Temp)*T_step
+    L_values = L_init + np.arange(n_Ls)*L_step
 
     plt.figure(figsize=(10, 6))
     for i in range(n_Ls):
@@ -755,7 +755,7 @@ def plot_Tcrit_L(T_crit_L, L_init, L_step, destino, filename):
     """
     Plotea la temperatura crítica en función del tamaño de la red L.
     """
-    L_values = np.arange(L_init, L_init + T_crit_L.size * L_step, L_step)
+    L_values = L_init + np.arange(T_crit_L.size)*L_step
 
     plt.figure(figsize=(10, 6))
     plt.plot(L_values, T_crit_L, marker='o', linestyle='-', color='b')
@@ -769,8 +769,8 @@ def plot_Tcrit_L(T_crit_L, L_init, L_step, destino, filename):
 def plot_magnetizations_vs_temp(magnetizations_vs_temp: np.ndarray, T_init, T_step, L_init, L_step, destino):
 
     n_Temp, n_Ls, domain = magnetizations_vs_temp.shape
-    T_values = np.arange(T_init, T_init + (n_Temp - 1) * T_step, T_step)
-    L_values = np.arange(L_init, L_init + n_Ls * L_step, L_step) 
+    T_values = T_init + np.arange(n_Temp)*T_step
+    L_values = L_init + np.arange(n_Ls)*L_step 
 
     if not os.path.exists(os.path.join(destino, "Magnetizations_vs_temp")):
         carpeta_magnetizations = os.path.join(destino, "Magnetizations_vs_temp")
@@ -797,7 +797,7 @@ def main():
     # ─── Parámetros base del modelo ────────────────────────────────────────────────────────────────────────────────────
 
     L                   = 16                        # (int) Tamaño de la red (LxL)
-    J                   = 1.0                       # (float) Constante de interacción (J > 0 para ferromagnetismo)
+    J                   = 1.0                       # (float) Constante de interacción 
     T                   = 1.0                       # (float) Temperatura del modelo de Ising 2D
     n_sweeps            = 10000                     # (int) Número de sweeps (barridos) a realizar
     density             = 0.75                       # (float) Densidad de espines +1
@@ -837,8 +837,8 @@ def main():
 
     # Ahora inicializamos los parámetros de temperatura:
     T_init = 2.00                                           # Temperatura inicial
-    T_step = 0.10                                           # Paso de temperatura
-    T_max  = 3.50                                           # Temperatura máxima
+    T_step = 0.125                                          # Paso de temperatura
+    T_max  = 2.50                                           # Temperatura máxima
 
     # Ahora hacemos lo mismo con L:
 
